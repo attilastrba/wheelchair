@@ -5,7 +5,7 @@
 
    Peter Hardy <peter@hardy.dropbear.id.au>
 */
-#include <SoftwareSerial.h>
+
 #include "KerbalSimpit.h"
 
 // Values of 0 being sent using Serial1.write() have to be cast as a byte to stop them being misinterpereted as NULL
@@ -29,7 +29,7 @@
 long encValue = 0;
 // Declare a KerbalSimpit object that will
 // communicate using the "Serial" device.
-KerbalSimpit mySimpit(Serial);
+KerbalSimpit mySimpit(Serial3);
  int16_t pitch;
  int reading_pitch=0;
  byte softwareRev = 0;
@@ -45,12 +45,16 @@ void setup() {
   
   // Turn off the built-in LED to indicate handshaking is complete.
   digitalWrite(LED_BUILTIN, LOW);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, LOW);
 
 }
 
 void init_simpit() {
 // Open the serial connection.
-  Serial.begin(115200);
+  Serial3.begin(115200);
 
   // This loop continually attempts to handshake with the plugin.
   // It will keep retrying until it gets a successful handshake.
@@ -137,7 +141,7 @@ void messageHandler(byte messageType, byte msg[], byte msgSize) {
       myAltitude = parseMessage<altitudeMessage>(msg);
       // Turn the LED on if the vessel is higher than 500 metres
       // above sea level. Otherwise turn it off.
-      if (myAltitude.sealevel > 500) {
+      if (myAltitude.sealevel > 1500) {
         digitalWrite(LED_BUILTIN, HIGH);
       } else {
         digitalWrite(LED_BUILTIN, LOW);
