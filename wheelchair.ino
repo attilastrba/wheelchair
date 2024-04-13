@@ -1,10 +1,10 @@
-/****************************************************************
-*                    Arduino MD25 example code                  *
-*                   MD25 running in Serial1 mode                 *
-*                                                               *
-*                     by James Henderson 2012                   *
-*****************************************************************/
+/* KerbalSimpitAltitudeTrigger
+   A demonstration of subscribing to telemetry data from the game.
+   Subscribes to the altitude channel, and turns the pin 13 LED
+   on when the sea level altitude > 500m.
 
+   Peter Hardy <peter@hardy.dropbear.id.au>
+*/
 #include <SoftwareSerial.h>
 #include "KerbalSimpit.h"
 
@@ -26,25 +26,51 @@
 #define Serial_CLEAR         0x0C
 #define Serial_SET_CUR       0x02
 
-//SoftwareSerial1 Serial = SoftwareSerial1(LCD_RX, LCD_TX);          // Define the Serial1 port for the Serial
-KerbalSimpit mySimpit(Serial);
-int16_t pitch;
 long encValue = 0;
-byte softwareRev = 0;
-// This boolean tracks the desired LED state.
-bool state = false;
-
-// A timestamp of the last time we sent an echo packet.
-unsigned long lastSent = 0;
-// How often to send echo packets (in ms)
-unsigned int sendInterval = 1000;
-
-
-
-void setup(){
-  Serial1.begin(38400);
-  Serial.begin(115200);
+// Declare a KerbalSimpit object that will
+// communicate using the "Serial" device.
+KerbalSimpit mySimpit(Serial);
+ int16_t pitch;
+ int reading_pitch=0;
+ byte softwareRev = 0;
+void setup() {
   
+
+  // Set up the build in LED, and turn it on.
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  init_simpit();
+  init_encoder();  
+  
+  // Turn off the built-in LED to indicate handshaking is complete.
+  digitalWrite(LED_BUILTIN, LOW);
+
+}
+
+void init_simpit() {
+// Open the serial connection.
+  Serial.begin(115200);
+
+  // This loop continually attempts to handshake with the plugin.
+  // It will keep retrying until it gets a successful handshake.
+  while (!mySimpit.init()) {
+    delay(100);
+  }
+
+    // Display a message in KSP to indicate handshaking is complete.
+  mySimpit.printToKSP("Connected", PRINT_TO_SCREEN);
+  // Sets our callback function. The KerbalSimpit library will
+  // call this function every time a packet is received.
+  mySimpit.inboundHandler(messageHandler);
+  // Send a message to the plugin registering for the Altitude channel.
+  // The plugin will now regularly send Altitude messages while the
+  // flight scene is active in-game.
+  mySimpit.registerChannel(ALTITUDE_MESSAGE);
+}
+
+void init_encoder() {
+  Serial1.begin(38400);
   Serial1.write(CMD);                                            // Set MD25 accelleration value
   Serial1.write(WRITEACCEL);
   Serial1.write(10);
@@ -58,76 +84,21 @@ void setup(){
   Serial1.write(CMD);                                            // Get software version of MD25
   Serial1.write(GET_VER);
   while(Serial1.available() < 1){}                               // Wait for byte to become available         
-  
-  // Set up the built in LED, and turn it on.
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
-  // This loop continually attempts to handshake with the plugin.
-  // It will keep retrying until it gets a successful handshake.
-  while (!mySimpit.init()) {
-    delay(100);
-  }
+   softwareRev = Serial1.read();  
 
-    // Turn off the built-in LED to indicate handshaking is complete.
-  digitalWrite(LED_BUILTIN, LOW);
-  // Display a message in KSP to indicate handshaking is complete.
-  mySimpit.printToKSP("Connected", PRINT_TO_SCREEN);
-mySimpit.printToKSP("Connected", PRINT_TO_SCREEN);
-mySimpit.printToKSP("Connected", PRINT_TO_SCREEN);
-mySimpit.printToKSP("Connected", PRINT_TO_SCREEN);
-  mySimpit.inboundHandler(messageHandler);
   
-  softwareRev = Serial1.read();  
-  
-//  Serial.write(Serial_CLEAR);                                     // Clear the Serial screen
- // Serial.write(Serial_HIDE_CUR);                                  // Hide the Serial cursor
 }
 
-void loop(){ 
-  
-  /*while(encValue < 3000){               // While encoder 1 value less than 3000 move forward
-    Serial1.write(CMD);                  // Set motors to drive forward at full speed
-    Serial1.write(WRITESP1);
-    Serial1.write(150);
-    encValue = readEncoder();
-    readVolts();
-  }
-  delay(100);
-  while(encValue > 100){
-    Serial1.write(CMD);                  // Drive motors reverse at full speed
-    Serial1.write(WRITESP1);
-    Serial1.write(100);
-    encValue = readEncoder();
-    readVolts();
-  }*/
-//  delay(100);
+void loop() {
+rotationMessage rot_msg;
   encValue = readEncoder();
-  rotationMessage rot_msg;
-
- unsigned long now = millis();
-  // If we've waited long enough since the last message, send a new one.
-  if (now - lastSent >= sendInterval) {
-    // If the last message was "high", send "low"
-    // and vice-versa.
-    if (state) {
-      mySimpit.send(ECHO_REQ_MESSAGE, "low", 4);
-    } else {
-      mySimpit.send(ECHO_REQ_MESSAGE, "high", 5);
-    }
-    // Update when we last sent a message.
-    lastSent = now;
-    // Update the state variable to match the message we just sent.
-    state = !state;
-  }
-  // Call the library update() function to check for new messages.
-  mySimpit.update();
-
-  
-  
+  //reading_pitch = reading_pitch+1;
+  // Check for new serial messages.
   pitch = map(encValue, 0, 1023, INT16_MIN, INT16_MAX);
-  //rot_msg.setPitch(pitch);
-  //mySimpit.send(ROTATION_MESSAGE, rot_msg);
-} 
+  rot_msg.setPitch(pitch);
+  mySimpit.send(ROTATION_MESSAGE, rot_msg);
+  mySimpit.update();
+}
 
 long readEncoder(){                        // Function to read and display the value of both encoders, returns value of first encoder
   long result1 = 0; 
@@ -149,66 +120,29 @@ long readEncoder(){                        // Function to read and display the v
   result2 += Serial1.read();
   result2 <<= 8;
   result2 += Serial1.read();
-/*
-  Serial.write(Serial_SET_CUR);              // Set the Serial cursor position
-  Serial.write(21);
-  Serial.print("Encoder 1:");               // Displays data to the Serial screen
-  Serial.print(result1,DEC);
-  Serial.print("Pitch:");
-  Serial.print(pitch,DEC);
-  Serial.print("\n");                        // Print a blank space to clear any unwanted characters that are leftover on the Serial display
-  
-  delay(5);                                // Delay for Serial to process data
-  
-  Serial.write(Serial_SET_CUR);
-  Serial.write(41); 
-  Serial.print("Encoder 2:");
-  Serial.print(result2,DEC);
-  Serial.print(" ");*/
+
   return result1;                                   
 }
-  
-void readVolts(){                                                 // Function reads current for both motors and battery voltage
-  byte batteryVolts, mot1_current, mot2_current = 0;
-  Serial1.write(CMD);
-  Serial1.write(READIVS);                                          // Send byte to readbattery voltage and motor currents
-  while(Serial1.available() < 3){}                                 // Wait for the 3 bytes to become available then get them
-  batteryVolts = Serial1.read();
-  mot1_current = Serial1.read();
-  mot2_current = Serial1.read();
-/*
-  Serial.write(Serial_SET_CUR);
-  Serial.write(61);
-  Serial.print("Mot1 I:");
-  Serial.print(mot1_current,DEC);
-  Serial.print(" Mot2 I:");
-  Serial.print(mot2_current,DEC);
-  Serial.print("\n"); 
-  
-  delay(5);
-  
-  Serial.write(Serial_SET_CUR);
-  Serial.write(1);
-  Serial.print("Rev:");
-  Serial.print(softwareRev, DEC);
-  Serial.print(" ");
-  Serial.print("Volts:");
-  Serial.print(batteryVolts/10,DEC);                               // Seperate whole number and descimal place of battery voltage and display
-  Serial.print(".");  
-  Serial.print(batteryVolts%10,DEC);
-  Serial.print("\n");   */
-}
+
 
 void messageHandler(byte messageType, byte msg[], byte msgSize) {
-  // We are only interested in echo response packets.
-  if (messageType == ECHO_RESP_MESSAGE) {
-    // The message payload will be either "low" or "high".
-    // We use the strcmp function to check what the string payload
-    // is, and set the LED status accordingly.
-    if (strcmp((char*) msg, "low")) {
-      digitalWrite(LED_BUILTIN, LOW);
-    } else {
-      digitalWrite(LED_BUILTIN, HIGH);
+  switch(messageType) {
+  case ALTITUDE_MESSAGE:
+    // Checking if the message is the size we expect is a very basic
+    // way to confirm if the message was received properly.
+    if (msgSize == sizeof(altitudeMessage)) {
+      // Create a new Altitude struct
+      altitudeMessage myAltitude;
+      // Convert the message we received to an Altitude struct.
+      myAltitude = parseMessage<altitudeMessage>(msg);
+      // Turn the LED on if the vessel is higher than 500 metres
+      // above sea level. Otherwise turn it off.
+      if (myAltitude.sealevel > 500) {
+        digitalWrite(LED_BUILTIN, HIGH);
+      } else {
+        digitalWrite(LED_BUILTIN, LOW);
+      }
     }
+    break;
   }
 }
