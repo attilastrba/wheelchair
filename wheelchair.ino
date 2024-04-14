@@ -31,7 +31,10 @@
 
 const byte MPS_OUT_pin = 20; // OUT data pin
 const byte MPS_SCK_pin = 21; // clock data pin
-int avg_size = 1; // #pts to average over
+
+// Define the actual input value that should map to zero
+long zeroInput = 0; // Update this value based on your calibration
+
 
 Q2HX711 MPS20N0040D(MPS_OUT_pin, MPS_SCK_pin); // start comm with the HX710B
 
@@ -60,6 +63,7 @@ void setup() {
 
   init_simpit();
   init_encoder();  
+  init_pressure();
   
   // Turn off the built-in LED to indicate handshaking is complete.
   digitalWrite(LED_BUILTIN, LOW);
@@ -72,13 +76,13 @@ void setup() {
 
 long read_pressure() {
     float avg_val = 0.0; // variable for averaging
+    int avg_size = 1;
   for (int ii=0;ii<avg_size;ii++){
     avg_val += MPS20N0040D.read(); // add multiple ADC readings
     delay(50); // delay between readings
   }
   avg_val /= avg_size;
-  long res =  round(avg_val) - 9007500;
-  return  res;
+  return  long(avg_val);
 }
 
 void init_simpit() {
@@ -102,6 +106,18 @@ void init_simpit() {
   mySimpit.registerChannel(ALTITUDE_MESSAGE);
 }
 
+void init_pressure() {
+  float avg_val = 0.0; // variable for averaging
+  int avg_size = 20;
+  for (int ii=0;ii<avg_size;ii++){
+    avg_val += MPS20N0040D.read(); // add multiple ADC readings
+    delay(100); // delay between readings
+  }
+  avg_val /= avg_size;
+  zeroInput = long(avg_val);
+  
+}
+
 void init_encoder() {
   Serial1.begin(38400);
   Serial1.write(CMD);                                            // Set MD25 accelleration value
@@ -122,17 +138,17 @@ void init_encoder() {
   
 }
 
+// Function to map pressure readings to a 16-bit signed integer range, centered around 0
 long mapPressure(long x, long in_min, long in_max) {
-  // Convert the range into double to handle larger intermediate values
-  double diff = x - in_min;
-  double range = in_max - in_min;
+  // Adjust x by shifting it to center on zeroInput
+  long adjustedX = x - zeroInput;
   
-  double scaled = diff / range; // Calculate the scaling factor
-  double result = scaled * INT16_MAX; // Apply the scaling factor to the output range
-  
+  // Now map from adjustedX to the output range
+  double scaled = (double)adjustedX / (in_max - in_min); // Normalize adjustedX
+  double result = scaled * (INT16_MAX - INT16_MIN); // Scale normalized value to full int16 range
+
   return (long)result; // Convert the double result back to long
 }
-
 void loop() {
 rotationMessage rot_msg;
 rotationMessage yaw_msg;
@@ -143,7 +159,11 @@ rotationMessage roll_msg;
   // Check for new serial messages.
   pitch = map(encValues.encoder1, 0, 1023, INT16_MIN, INT16_MAX);
   yaw = map(encValues.encoder2, 0, 1023, INT16_MIN, INT16_MAX);
-   long roll = mapPressure(pressure, 0, 10962926);
+   long roll = mapPressure(pressure, 0, 13962926);
+  if (roll > -600 && roll < 600)
+    roll = 0;
+   if (roll < -35000)
+    roll = -32000;
   rot_msg.setPitch(pitch);
   rot_msg.setYaw(yaw);
   rot_msg.setRoll(roll);
