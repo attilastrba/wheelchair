@@ -26,11 +26,29 @@
 #define Serial_CLEAR         0x0C
 #define Serial_SET_CUR       0x02
 
-long encValue = 0;
+//***** Druck sensor
+#include <Q2HX711.h>
+
+const byte MPS_OUT_pin = 20; // OUT data pin
+const byte MPS_SCK_pin = 21; // clock data pin
+int avg_size = 1; // #pts to average over
+
+Q2HX711 MPS20N0040D(MPS_OUT_pin, MPS_SCK_pin); // start comm with the HX710B
+
+//******************
+
+
+typedef struct encoderValues{
+  long encoder1;
+  long encoder2;
+} ;
+
+
+encoderValues encValues;
 // Declare a KerbalSimpit object that will
 // communicate using the "Serial" device.
 KerbalSimpit mySimpit(Serial3);
- int16_t pitch;
+ int16_t pitch, yaw, roll;
  int reading_pitch=0;
  byte softwareRev = 0;
 void setup() {
@@ -50,6 +68,17 @@ void setup() {
   delay(1000);
   digitalWrite(LED_BUILTIN, LOW);
 
+}
+
+long read_pressure() {
+    float avg_val = 0.0; // variable for averaging
+  for (int ii=0;ii<avg_size;ii++){
+    avg_val += MPS20N0040D.read(); // add multiple ADC readings
+    delay(50); // delay between readings
+  }
+  avg_val /= avg_size;
+  long res =  round(avg_val) - 9007500;
+  return  res;
 }
 
 void init_simpit() {
@@ -93,20 +122,43 @@ void init_encoder() {
   
 }
 
-void loop() {
-rotationMessage rot_msg;
-  encValue = readEncoder();
-  //reading_pitch = reading_pitch+1;
-  // Check for new serial messages.
-  pitch = map(encValue, 0, 1023, INT16_MIN, INT16_MAX);
-  rot_msg.setPitch(pitch);
-  mySimpit.send(ROTATION_MESSAGE, rot_msg);
-  mySimpit.update();
+long mapPressure(long x, long in_min, long in_max) {
+  // Convert the range into double to handle larger intermediate values
+  double diff = x - in_min;
+  double range = in_max - in_min;
+  
+  double scaled = diff / range; // Calculate the scaling factor
+  double result = scaled * INT16_MAX; // Apply the scaling factor to the output range
+  
+  return (long)result; // Convert the double result back to long
 }
 
-long readEncoder(){                        // Function to read and display the value of both encoders, returns value of first encoder
+void loop() {
+rotationMessage rot_msg;
+rotationMessage yaw_msg;
+rotationMessage roll_msg;
+  encValues = readEncoder();
+  long pressure = read_pressure();
+  //reading_pitch = reading_pitch+1;
+  // Check for new serial messages.
+  pitch = map(encValues.encoder1, 0, 1023, INT16_MIN, INT16_MAX);
+  yaw = map(encValues.encoder2, 0, 1023, INT16_MIN, INT16_MAX);
+   long roll = mapPressure(pressure, 0, 10962926);
+  rot_msg.setPitch(pitch);
+  rot_msg.setYaw(yaw);
+  rot_msg.setRoll(roll);
+  mySimpit.send(ROTATION_MESSAGE, rot_msg);
+  mySimpit.update();
+  String text = " y " + String(yaw) + " x " + String(pitch) +" r " + String(roll);
+  mySimpit.printToKSP(text, NO_HEADER);
+  
+}
+
+
+struct encoderValues readEncoder(){                        // Function to read and display the value of both encoders, returns value of first encoder
   long result1 = 0; 
   long result2 = 0;
+  encoderValues encoders;
   Serial1.write(CMD);
   Serial1.write(READENCS);
   while(Serial1.available() < 8){}          // Wait for 8 bytes, first 4 encoder 1 values second 4 encoder 2 values 
@@ -124,8 +176,11 @@ long readEncoder(){                        // Function to read and display the v
   result2 += Serial1.read();
   result2 <<= 8;
   result2 += Serial1.read();
+  encoders.encoder1 = result1;
+  encoders.encoder2 = result2;
+  
 
-  return result1;                                   
+  return encoders;                                   
 }
 
 
