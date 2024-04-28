@@ -7,6 +7,7 @@
 */
 #include <Arduino.h>
 #include "KerbalSimpit.h"
+#include <LiquidCrystal_I2C.h> //library via Include Library > Manage Library > 
 
 
 // Values of 0 being sent using Serial1.write() have to be cast as a byte to stop them being misinterpereted as NULL
@@ -30,8 +31,24 @@
 //***** Druck sensor
 #include <Q2HX711.h>
 
-const byte MPS_OUT_pin = 20; // OUT data pin
-const byte MPS_SCK_pin = 21; // clock data pin
+
+uint8_t simpit_init = false;
+uint8_t pressure_init = false;
+uint8_t motor_init = false;
+char lcd_status[255];
+
+
+LiquidCrystal_I2C lcd(0x27,16,2); 
+
+void prg_status() {
+  lcd.setCursor(0,1);
+  sprintf(lcd_status, "S:%d P:%d M:%d", simpit_init, pressure_init, motor_init);
+  lcd.print(lcd_status );
+}
+
+
+const byte MPS_OUT_pin = 6; // OUT data pin
+const byte MPS_SCK_pin = 7; // clock data pin
 
 // Define the actual input value that should map to zero
 long zeroInput = 0; // Update this value based on your calibration
@@ -57,71 +74,45 @@ KerbalSimpit mySimpit(Serial3);
  byte softwareRev = 0;
 
 
-void init_simpit() {
-// Open the serial connection.
-  Serial3.begin(115200);
-
-  // This loop continually attempts to handshake with the plugin.
-  // It will keep retrying until it gets a successful handshake.
-  while (!mySimpit.init()) {
-    delay(100);
-  }
-
-  // Display a message in KSP to indicate handshaking is complete.
-  mySimpit.printToKSP("Connected", PRINT_TO_SCREEN);
-  // Sets our callback function. The KerbalSimpit library will
-  // call this function every time a packet is received.
-  mySimpit.inboundHandler(messageHandler);
-  // Send a message to the plugin registering for the Altitude channel.
-  // The plugin will now regularly send Altitude messages while the
-  // flight scene is active in-game.
-  mySimpit.registerChannel(ALTITUDE_MESSAGE);
-}
-
-
-long read_pressure() {
-    float avg_val = 0.0; // variable for averaging
-    int avg_size = 1;
-  for (int ii=0;ii<avg_size;ii++){
-    avg_val += MPS20N0040D.read(); // add multiple ADC readings
-    delay(50); // delay between readings
-  }
-  avg_val /= avg_size;
-  return  long(avg_val);
-}
-
-
-void setup() {
-  // Set up the build in LED, and turn it on.
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
-
-  init_simpit();
-  init_encoder();  
-  init_pressure();
-  
-  // Turn off the built-in LED to indicate handshaking is complete.
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(1000);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(1000);
-  digitalWrite(LED_BUILTIN, LOW);
-
-}
 
 void init_pressure() {
   float avg_val = 0.0; // variable for averaging
   int avg_size = 20;
+  char sPressure[300];
+  lcd.setCursor(0,0); 
+  lcd.print("Init pressure");
+
   for (int ii=0;ii<avg_size;ii++){
     avg_val += MPS20N0040D.read(); // add multiple ADC readings
     delay(100); // delay between readings
+    lcd.setCursor(0,0); 
+    sprintf(sPressure, "P:%f", avg_val);
+    lcd.print(sPressure);
   }
   avg_val /= avg_size;
   zeroInput = long(avg_val);
+  lcd.setCursor(0,0); 
+  sprintf(sPressure, "P:%d", zeroInput);
+  lcd.print(sPressure);
+
+  pressure_init = true;
+  prg_status();
+
   
 }
 
+void init_lcd() {
+  lcd.init();
+  lcd.setCursor(0,0);
+  lcd.print("Lcd init");
+  lcd.backlight();
+  //lcd.autoscroll();
+}
+
 void init_encoder() {
+  lcd.setCursor(0,0); 
+  lcd.print("Init encoder");
+
   Serial1.begin(38400);
   Serial1.write(CMD);                                            // Set MD25 accelleration value
   Serial1.write(WRITEACCEL);
@@ -137,6 +128,68 @@ void init_encoder() {
   Serial1.write(GET_VER);
   while(Serial1.available() < 1){}                               // Wait for byte to become available         
    softwareRev = Serial1.read();  
+
+  motor_init = true;
+  prg_status();
+
+}
+
+
+
+
+void init_simpit() {
+// Open the serial connection.
+  Serial3.begin(115200);
+
+  // This loop continually attempts to handshake with the plugin.
+  // It will keep retrying until it gets a successful handshake.
+  while (!mySimpit.init()) {
+    lcd.setCursor(0,0);
+    lcd.print("Simpit init...");
+  }
+  // Display a message in KSP to indicate handshaking is complete.
+  mySimpit.printToKSP("Connected", PRINT_TO_SCREEN);
+  // Sets our callback function. The KerbalSimpit library will
+  // call this function every time a packet is received.
+  mySimpit.inboundHandler(messageHandler);
+  // Send a message to the plugin registering for the Altitude channel.
+  // The plugin will now regularly send Altitude messages while the
+  // flight scene is active in-game.
+  mySimpit.registerChannel(ALTITUDE_MESSAGE);
+  simpit_init = true;
+  prg_status();
+}
+
+
+long read_pressure() {
+    float avg_val = 0.0; // variable for averaging
+    int avg_size = 1;
+  for (int ii=0;ii<avg_size;ii++){
+    avg_val += MPS20N0040D.read();  // add multiple ADC readings
+    delay(50); // delay between readings
+  }
+  avg_val /= avg_size;
+  return  long(avg_val);
+}
+
+void setup() {
+  // Set up the build in LED, and turn it on.
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  init_lcd();
+  prg_status();
+  init_simpit();
+  init_encoder();  
+  init_pressure();
+  
+  // Turn off the built-in LED to indicate handshaking is complete.
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, LOW);
+
 }
 
 // Function to map pressure readings to a 16-bit signed integer range, centered around 0
@@ -178,7 +231,10 @@ struct encoderValues readEncoder(){                        // Function to read a
   return encoders;                                   
 }
 
+
 void loop() {
+
+
 rotationMessage rot_msg;
 rotationMessage yaw_msg;
 rotationMessage roll_msg;
@@ -198,7 +254,11 @@ rotationMessage roll_msg;
   rot_msg.setRoll(roll);
   mySimpit.send(ROTATION_MESSAGE, rot_msg);
   mySimpit.update();
-  String text = " y " + String(yaw) + " x " + String(pitch) +" r " + String(roll);
+  //String text = " y " + String(yaw) + " x " + String(pitch) +" r " + String(roll);
+  String text = " x " + String(pitch) +" r " + String(roll);
+  lcd.setCursor(0,0);
+  lcd.print(text);
+  
   mySimpit.printToKSP(text, NO_HEADER);
   
 }
