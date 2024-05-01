@@ -68,7 +68,7 @@ struct encoderValues{
 encoderValues encValues;
 // Declare a KerbalSimpit object that will
 // communicate using the "Serial" device.
-KerbalSimpit mySimpit(Serial3);
+KerbalSimpit mySimpit(Serial2);
  int16_t pitch, yaw, roll;
  int reading_pitch=0;
  byte softwareRev = 0;
@@ -113,21 +113,21 @@ void init_encoder() {
   lcd.setCursor(0,0); 
   lcd.print("Init encoder");
 
-  Serial1.begin(38400);
-  Serial1.write(CMD);                                            // Set MD25 accelleration value
-  Serial1.write(WRITEACCEL);
-  Serial1.write(10);
+  Serial3.begin(38400);
+  Serial3.write(CMD);                                            // Set MD25 accelleration value
+  Serial3.write(WRITEACCEL);
+  Serial3.write(10);
   delayMicroseconds(10);                                        // Wait for this to be processed
-  Serial1.write(CMD);                                            // Reset the encoder registers to 0
-  Serial1.write(RESETREG);         
-  Serial1.write(CMD);                                            // Set mode to 2, Both motors controlled by writing to speed 1
-  Serial1.write(SETMODE);
-  Serial1.write(2);    
+  Serial3.write(CMD);                                            // Reset the encoder registers to 0
+  Serial3.write(RESETREG);         
+  Serial3.write(CMD);                                            // Set mode to 2, Both motors controlled by writing to speed 1
+  Serial3.write(SETMODE);
+  Serial3.write(2);    
   
-  Serial1.write(CMD);                                            // Get software version of MD25
-  Serial1.write(GET_VER);
-  while(Serial1.available() < 1){}                               // Wait for byte to become available         
-   softwareRev = Serial1.read();  
+  Serial3.write(CMD);                                            // Get software version of MD25
+  Serial3.write(GET_VER);
+  while(Serial3.available() < 1){}                               // Wait for byte to become available         
+   softwareRev = Serial3.read();  
 
   motor_init = true;
   prg_status();
@@ -139,7 +139,7 @@ void init_encoder() {
 
 void init_simpit() {
 // Open the serial connection.
-  Serial3.begin(115200);
+  Serial2.begin(115200);
 
   // This loop continually attempts to handshake with the plugin.
   // It will keep retrying until it gets a successful handshake.
@@ -209,23 +209,23 @@ struct encoderValues readEncoder(){                        // Function to read a
   long result1 = 0; 
   long result2 = 0;
   encoderValues encoders;
-  Serial1.write(CMD);
-  Serial1.write(READENCS);
-  while(Serial1.available() < 8){}          // Wait for 8 bytes, first 4 encoder 1 values second 4 encoder 2 values 
-  result1 = Serial1.read();                 // First byte for encoder 1, HH.
+  Serial3.write(CMD);
+  Serial3.write(READENCS);
+  while(Serial3.available() < 8){}          // Wait for 8 bytes, first 4 encoder 1 values second 4 encoder 2 values 
+  result1 = Serial3.read();                 // First byte for encoder 1, HH.
   result1 <<= 8;
-  result1 += Serial1.read();                // Second byte for encoder 1, HL
+  result1 += Serial3.read();                // Second byte for encoder 1, HL
   result1 <<= 8;
-  result1 += Serial1.read();                // Third byte for encoder 1, LH
+  result1 += Serial3.read();                // Third byte for encoder 1, LH
   result1 <<= 8;
-  result1  += Serial1.read();               // Fourth byte for encoder 1, LL
-  result2 = Serial1.read();
+  result1  += Serial3.read();               // Fourth byte for encoder 1, LL
+  result2 = Serial3.read();
   result2 <<= 8;
-  result2 += Serial1.read();
+  result2 += Serial3.read();
   result2 <<= 8;
-  result2 += Serial1.read();
+  result2 += Serial3.read();
   result2 <<= 8;
-  result2 += Serial1.read();
+  result2 += Serial3.read();
   encoders.encoder1 = result1;
   encoders.encoder2 = result2;
   return encoders;                                   
